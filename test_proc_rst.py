@@ -6,7 +6,7 @@ Run with::
 """
 
 import sys
-from os.path import dirname, join as pjoin
+from os.path import dirname, basename, join as pjoin
 from glob import glob
 
 import pytest
@@ -17,6 +17,7 @@ sys.path.append(dirname(__file__))
 from proc_rst import doctest2code, process_rst, build_pages
 
 EXAMPLE_DIR = pjoin(MY_DIR, 'examples')
+TPL_HIDDEN_SOLUTION = pjoin(EXAMPLE_DIR, 'on_dummies.tpl')
 
 
 def test_doctest2code():
@@ -150,14 +151,33 @@ class Args(object):
     new_title = None
 
 
+def assert_as_before(pages):
+    for out, contents in pages.values():
+        with open(pjoin(EXAMPLE_DIR, out), 'rt') as fobj:
+            original = fobj.read()
+        assert original == contents
+
+
 def test_regression():
-    # Test results from this run same as previous
+    # Test results from this run same as previous build.
+    # Edit the examples when fixing bugs in parser.
     args = Args()
     for template in glob(pjoin(EXAMPLE_DIR, '*.tpl')):
-        args.solution_fname = template
+        if template == TPL_HIDDEN_SOLUTION:
+            continue
+        args.template_fname = template
         pages = build_pages(args)
         assert sorted(pages) == ['code', 'exercise', 'solution']
-        for out, contents in pages.values():
-            with open(pjoin(EXAMPLE_DIR, out), 'rt') as fobj:
-                original = fobj.read()
-            assert original == contents
+        assert_as_before(pages)
+    # Test fussy page with no linked solution
+    args.template_fname = TPL_HIDDEN_SOLUTION
+    args.solution_page = ''
+    pages = build_pages(args)
+    assert sorted(pages) == ['code', 'exercise']
+    assert_as_before(pages)
+    args.solution_page = None
+    args.exercise_page = ''
+    args.exercise_code = ''
+    pages = build_pages(args)
+    assert sorted(pages) == ['solution']
+    assert_as_before(pages)

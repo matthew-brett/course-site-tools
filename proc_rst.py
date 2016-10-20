@@ -105,21 +105,27 @@ def process_rst(contents):
     `code_template`, regardless of whether they are in a doctest block.
 
     Otherwise, remove all doctest blocks.
+
+    Also look for explicit solution / exercise / code blocks as marked by ``..
+    solution-start``, ``.. solution-replace``, ``..  solution-replace-code``
+    markers, ended by ``.. solution-end`` marker.  See module doctstring and
+    tests for detail.
     """
-    exercise_page = []
-    doctest_blocks = []  # List contains all doctest blocks
-    doctest_block = []  #  A block to contain current doctest
-    state = 'rest'
-    underline_char = None
-    title = None
-    solution_page = []
+    solution_page = []  # lines in output solution
+    exercise_page = []  # lines in output exercise
+    # All doctest and solution-code-replace code blocks for code template
+    code_blocks = []
+    doctest_block = []  # lines in doctest currently being collected
+    state = 'rest'  # finite state machine
+    underline_char = None  # if title found, underline character
+    title = None  # it title found, text of title
     for line in contents.splitlines(True):
         solution_page.append(line)
         sline = line.strip()
         if state in ('doctest', 'doctest-keeper'):
             if sline == '':
                 exercise_page += doctest_block + ['\n']
-                doctest_blocks.append(doctest_block)
+                code_blocks.append(doctest2code(doctest_block))
                 doctest_block = []
                 state = 'rest'
             elif state == 'doctest-keeper' or sline.startswith('>>> #-'):
@@ -157,7 +163,7 @@ def process_rst(contents):
             solution_page.pop()
             if sline == '.. solution-end':
                 if extra_code:
-                    doctest_blocks.append(
+                    code_blocks.append(
                         dedent(''.join(extra_code)))
                 state = 'rest'
             elif sline == '.. solution-replace-code':
@@ -169,7 +175,7 @@ def process_rst(contents):
             solution_page.pop()
             if sline == '.. solution-end':
                 if extra_code:
-                    doctest_blocks.append(
+                    code_blocks.append(
                         dedent(''.join(extra_code)))
                 state = 'rest'
             elif sline == '.. solution-replace':
@@ -187,30 +193,31 @@ def process_rst(contents):
                  'replace-in-code',
                  'in-solution'):
         raise ValueError('Solution block not terminated with '
-                        '.. solution-end')
+                         '.. solution-end')
     if doctest_block:
-        doctest_blocks.append(doctest_block)
+        # Document finished with doctest block
+        code_blocks.append(doctest2code(doctest_block))
         exercise_page += doctest_block
-    code_template = process_doctest_blocks(doctest_blocks)
     return (''.join(solution_page),
             ''.join(exercise_page),
-            code_template, title, underline_char)
-
-
-def process_doctest_blocks(doctest_blocks):
-    return '\n'.join(process_doctest_block(dtb) for dtb in doctest_blocks)
+            '\n'.join(code_blocks),
+            title, underline_char)
 
 
 DOCTEST_RE = re.compile('^(\s*)(>>>|\.\.\.) ?')
 
 
-def process_doctest_block(doctest_block):
-    return ''.join([DOCTEST_RE.sub('', line) for line in doctest_block])
+def doctest2code(doctest_block):
+    lines = []
+    for line in doctest_block:
+        if DOCTEST_RE.match(line):
+            lines.append(DOCTEST_RE.sub('', line))
+    return ''.join(lines)
 
 
 def get_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("solution_fname")
+    parser.add_argument("template_fname")
     parser.add_argument("--new-title")
     parser.add_argument("--exercise-page")
     parser.add_argument("--solution-page")
@@ -229,7 +236,16 @@ def write_or_print(out, content):
 
 
 def build_pages(args):
-    in_fname = args.solution_fname
+    """ Build solution, exercise and code pages given command line `args`
+
+    Parameters
+    ----------
+    args : object
+        Object with attributes:
+
+        * template_fname - filename of template to read;
+    """
+    in_fname = args.template_fname
     froot, ext = splitext(in_fname)
     with open(in_fname, 'rt') as fobj:
         contents = fobj.read()

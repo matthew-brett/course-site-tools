@@ -14,18 +14,55 @@ import pytest
 MY_DIR = dirname(__file__)
 sys.path.append(dirname(__file__))
 
-from proc_rst import process_doctest_block, process_rst, build_pages
+from proc_rst import doctest2code, process_rst, build_pages
 
 EXAMPLE_DIR = pjoin(MY_DIR, 'examples')
 
 
-def test_process_doctest_block():
-    assert process_doctest_block(['']) == ''
-    assert process_doctest_block(['>>> ']) == ''
-    assert process_doctest_block(['>>> foo = 1']) == 'foo = 1'
-    assert process_doctest_block(['>>> if foo == 1:\n',
-                                  '...     bar = 2']) == (
-                                      'if foo == 1:\n    bar = 2')
+def test_doctest2code():
+    assert doctest2code(['']) == ''
+    assert doctest2code(['>>> ']) == ''
+    assert doctest2code(['>>> foo = 1']) == 'foo = 1'
+    assert doctest2code(['>>> if foo == 1:\n',
+                         '...     bar = 2']) == (
+                             'if foo == 1:\n    bar = 2')
+
+
+def test_doctest_end():
+    template = """\
+Text
+
+>>> a = 1
+"""
+    assert (process_rst(template) == (template, 'Text\n\n', '', None, None))
+    template = """\
+Text
+
+>>> a = 1
+
+More text
+"""
+    assert (process_rst(template) == (
+        template, 'Text\n\n\nMore text\n', '', None, None))
+    template = """\
+>>> a = 1
+"""
+    assert (process_rst(template) == (
+        template, '', '', None, None))
+    template = """\
+>>> #: preserve
+>>> a = 1
+"""
+    assert (process_rst(template) == (
+        template, template, '#: preserve\na = 1\n', None, None))
+    template = """\
+>>> #- comment only
+>>> a = 1
+"""
+    assert (process_rst(template) == (
+        template,
+        ">>> #- comment only\n",
+        '#- comment only\n', None, None))
 
 
 def test_process_solution():
@@ -84,6 +121,28 @@ def test_process_solution():
         process_rst(template)
 
 
+def test_doctest_with_output():
+    template = """\
+
+.. nbplot::
+
+    >>> #: doctest with output
+    >>> print(1)
+    1
+    >>> print(2)
+    2
+
+"""
+    soln, exercise, code, title, underline = process_rst(template)
+    assert (soln, exercise, code, title, underline) == (
+        template, template, """\
+#: doctest with output
+print(1)
+print(2)
+""",
+        None, None)
+
+
 class Args(object):
     exercise_code = None
     solution_page = None
@@ -100,4 +159,5 @@ def test_regression():
         assert sorted(pages) == ['code', 'exercise', 'solution']
         for out, contents in pages.values():
             with open(pjoin(EXAMPLE_DIR, out), 'rt') as fobj:
-                assert fobj.read() == contents
+                original = fobj.read()
+            assert original == contents

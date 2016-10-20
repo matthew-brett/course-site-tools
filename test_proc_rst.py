@@ -6,13 +6,17 @@ Run with::
 """
 
 import sys
-from os.path import dirname
+from os.path import dirname, join as pjoin
+from glob import glob
 
 import pytest
 
+MY_DIR = dirname(__file__)
 sys.path.append(dirname(__file__))
 
-from proc_rst import process_doctest_block, process_rst
+from proc_rst import process_doctest_block, process_rst, build_pages
+
+EXAMPLE_DIR = pjoin(MY_DIR, 'examples')
 
 
 def test_process_doctest_block():
@@ -78,3 +82,22 @@ def test_process_solution():
 """
     with pytest.raises(ValueError):
         process_rst(template)
+
+
+class Args(object):
+    exercise_code = None
+    solution_page = None
+    exercise_page = None
+    new_title = None
+
+
+def test_regression():
+    # Test results from this run same as previous
+    args = Args()
+    for template in glob(pjoin(EXAMPLE_DIR, '*.tpl')):
+        args.solution_fname = template
+        pages = build_pages(args)
+        assert sorted(pages) == ['code', 'exercise', 'solution']
+        for out, contents in pages.values():
+            with open(pjoin(EXAMPLE_DIR, out), 'rt') as fobj:
+                assert fobj.read() == contents

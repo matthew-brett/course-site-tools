@@ -228,8 +228,7 @@ def write_or_print(out, content):
         fobj.write(content)
 
 
-def main():
-    args = get_parser().parse_args()
+def build_pages(args):
     in_fname = args.solution_fname
     froot, ext = splitext(in_fname)
     with open(in_fname, 'rt') as fobj:
@@ -249,19 +248,26 @@ def main():
     header = HEADER_FMT.format(underline=u_char * len(new_title),
                                title=new_title)
     header_extras = []
+    pages = {}
     if exercise_code not in ('', 'none'):  # Empty string disables
         header_extras.append(
             '* For code template see: :download:`{}`'.format(
                 basename(exercise_code)))
-        write_or_print(exercise_code, code_template)
+        pages['code'] = (exercise_code, code_template)
     if solution_page not in ('', 'none'):  # Empty string disables
         header_extras.append(
             '* For solution see: :doc:`{}`'.format(
                 basename(splitext(solution_page)[0])))
-        write_or_print(solution_page, soln_rst)
+        pages['solution'] = (solution_page, soln_rst)
     if exercise_page not in ('', 'none'):  # Empty string disables
         extras = ';\n'.join(header_extras) + '.\n\n'
-        write_or_print(exercise_page, header + extras + ex_rst)
+        pages['exercise'] = (exercise_page, header + extras + ex_rst)
+    return pages
+
+
+def main():
+    for out, contents in build_pages(get_parser().parse_args()).values():
+        write_or_print(out, contents)
 
 
 if __name__ == '__main__':

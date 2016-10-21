@@ -5,7 +5,6 @@ A first go at finding brain activation
 * For code template see: :download:`first_activation_code.py`;
 * For solution see: :doc:`first_activation_solution`.
 
-
 .. nbplot::
     :include-source: false
 

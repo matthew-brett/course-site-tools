@@ -41,6 +41,14 @@ the code template.
 If there is a ``.. solution-replace-code`` line, from that line, until ``..
 solution-replace`` or ``.. solution-end``, goes into the code template, but not
 the exercise.
+
+Title
+
+A valid page must have a title with overline and underline, such as::
+
+    #######
+    A title
+    #######
 """
 
 import sys
@@ -86,12 +94,9 @@ def process_rst(contents):
     code_template : str
         Python code template for students to fill in.  Code template contains
         doctest comments and blocks labeled for inclusion (see Notes).
-    title : None or str
-        Any title found between overline and underline in the `contents`.  None
-        if no such title found.
-    underline_char : None or str
-        Character used in overline / underline of title.  None if no title
-        found.
+    title_lines : list
+        If title found, length 3 list with overline, title and underline.
+        Otherwise empty list.
 
     Notes
     -----
@@ -117,12 +122,23 @@ def process_rst(contents):
     code_blocks = []
     doctest_block = []  # lines in doctest currently being collected
     state = 'rest'  # finite state machine
-    underline_char = None  # if title found, underline character
-    title = None  # it title found, text of title
+    title_lines = []  # Lines of overline, title, underline
     for line in contents.splitlines(True):
         solution_page.append(line)
         sline = line.strip()
-        if state in ('doctest', 'doctest-keeper'):
+        if state == 'title':
+            exercise_page.append(line)
+            title_lines.append(line)
+            state = 'post-title'
+        elif state == 'post-title':
+            if not is_section_line(line):
+                raise ValueError('Title must have overline and underline')
+            if not line[0] == title_lines[0][0]:
+                raise ValueError('Title overline and underline must be same')
+            exercise_page.append(line)
+            title_lines.append(line)
+            state = 'rest'
+        elif state in ('doctest', 'doctest-keeper'):
             if sline == '':
                 exercise_page += doctest_block + ['\n']
                 code_blocks.append(doctest2code(doctest_block))
@@ -132,16 +148,17 @@ def process_rst(contents):
                 doctest_block.append(line)
             continue
         elif state == 'rest':
-            if sline.startswith('>>> #:'):  # Keep this whole doctest block
+            if len(title_lines) == 0 and is_section_line(line):
+                state = 'title'
+                exercise_page.append(line)
+                title_lines.append(line)
+            elif sline.startswith('>>> #:'):  # Keep this whole doctest block
                 state = 'doctest-keeper'
                 doctest_block.append(line)
             elif sline.startswith('>>> #-'):  # Keep just this line
                 doctest_block.append(line)
             elif sline.startswith('>>> '):  # Simply remove
                 state = 'doctest'
-            elif underline_char is None and is_section_line(line):
-                state = 'title'
-                underline_char = line[0]
             elif sline.startswith('.. solution-start'):
                 state = 'in-solution'
                 extra_code = []
@@ -182,13 +199,6 @@ def process_rst(contents):
                 state = 'replace-in-exercise'
             else:
                 extra_code.append(line)
-        elif state == 'title':  # Knock off header
-            state = 'post-title'
-            title = sline
-        elif state == 'post-title':
-            assert is_section_line(line)
-            assert line[0] == underline_char
-            state = 'rest'
     if state in ('replace-in-exercise',
                  'replace-in-code',
                  'in-solution'):
@@ -201,7 +211,7 @@ def process_rst(contents):
     return (''.join(solution_page),
             ''.join(exercise_page),
             '\n'.join(code_blocks),
-            title, underline_char)
+            title_lines)
 
 
 DOCTEST_RE = re.compile('^(\s*)(>>>|\.\.\.) ?')
@@ -249,11 +259,11 @@ def build_pages(args):
     froot, ext = splitext(in_fname)
     with open(in_fname, 'rt') as fobj:
         contents = fobj.read()
-    soln_rst, ex_rst, code_template, title, u_char = process_rst(contents)
-    if title is None:
+    soln_rst, ex_rst, code_template, title_lines = process_rst(contents)
+    if len(title_lines) == 0:
         raise RuntimeError("Could not find title for page")
     new_title = (args.new_title if args.new_title
-                 else title.replace('solution', 'exercise'))
+                 else title_lines[1].replace('solution', 'exercise').strip())
     solution_page = (froot + '_solution.rst' if args.solution_page is None
                      else args.solution_page)
     exercise_page = (froot + '_exercise.rst' if args.exercise_page is None
@@ -261,24 +271,30 @@ def build_pages(args):
     exercise_code = (froot + '_code.py' if args.exercise_code is None
                      else args.exercise_code)
     code_template = '""" {}\n"""\n'.format(new_title) + code_template
-    header = HEADER_FMT.format(underline=u_char * len(new_title),
-                               title=new_title)
-    header_extras = []
+    ex_extras = []
     pages = {}
     if exercise_code not in ('', 'none'):  # Empty string disables
-        header_extras.append(
+        ex_extras.append(
             '* For code template see: :download:`{}`'.format(
                 basename(exercise_code)))
         pages['code'] = (exercise_code, code_template)
     if solution_page not in ('', 'none'):  # Empty string disables
-        header_extras.append(
+        ex_extras.append(
             '* For solution see: :doc:`{}`'.format(
                 basename(splitext(solution_page)[0])))
         pages['solution'] = (solution_page, soln_rst)
     if exercise_page not in ('', 'none'):  # Empty string disables
-        extras = ';\n'.join(header_extras) + '.\n\n'
-        pages['exercise'] = (exercise_page, header + extras + ex_rst)
+        extra_txt = ';\n'.join(ex_extras) + '.\n'
+        ex_rst = process_title(ex_rst, title_lines, new_title, extra_txt)
+        pages['exercise'] = (exercise_page, ex_rst)
     return pages
+
+
+def process_title(exercise_rst, title_lines, new_title, extra_txt):
+    u_char = title_lines[0][0]
+    header = HEADER_FMT.format(underline=u_char * len(new_title),
+                               title=new_title) + extra_txt
+    return re.sub(''.join(title_lines), header, exercise_rst, count=1)
 
 
 def main():

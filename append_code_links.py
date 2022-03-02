@@ -9,14 +9,19 @@ from argparse import ArgumentParser, RawDescriptionHelpFormatter
 NBPLOTS_RE = re.compile(r'^..\s+nbplot::', re.M)
 
 
-def append_code_links(fname):
+def append_code_links(fname, dry_run=True):
     with open(fname, 'rt') as fobj:
         contents = fobj.read()
     if not NBPLOTS_RE.search(contents):
+        if dry_run:
+            print(f'No nbplots in {fname}')
         return
+    if dry_run:
+        # print(f'Will append code-links to {fname}')
+        pass
     with open(fname, 'wt') as fobj:
         fobj.write(contents)
-        fobj.write('\n\n.. code-links::\n')
+        fobj.write('\n\n.. code-links:: clear\n')
 
 
 def get_parser():
